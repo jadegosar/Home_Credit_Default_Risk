@@ -1,6 +1,6 @@
 # Home_Credit_Default_Risk
 	
-	There is a vast amount of borrowers who experience difficulty getting a loan they have the ability to repay due to a range of factors from insufficient
+There is a vast amount of borrowers who experience difficulty getting a loan they have the ability to repay due to a range of factors from insufficient
 credit histories to non-existent data in areas that have historically been used to determine default risk. A borrower's inability to provide proof of credit
 accountability can lead to these clients being taken advantage of by untrustworthy lenders or being unable to obtain a loan from a trusted institution.
 Additionally, without sufficient financial and credit histories for customers, it becomes more difficult for lenders to identify and predict which customers are at
