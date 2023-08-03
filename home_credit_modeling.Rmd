@@ -1,0 +1,378 @@
+---
+title: "Home Credit EDA Modeling Workbook"
+author: "Group 8: Jade Gosar, Karson Eilers, Paula Soutostefani"
+date: "2023-07-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+#install.packages("randomForest")
+#install.packages("rminer")
+#install.packages("splitstackshape")
+
+#load packages
+library(tidyverse)
+library(caret)
+library(readr)
+library(dplyr)
+library(rpart)
+library(rminer)
+library(randomForest)
+library(splitstackshape)
+```
+
+
+```{r data import}
+#Imports cleaned training and testing set containing relevant varaibles and no na values
+#see 'data_consolidation_script.R' for full details
+
+#The training set is a product of the application_train.csv set and two values from 
+training_set <- read_csv('clean_training_data.csv')
+#note - the cleaned training set has 263,480 observations instead fo the 307511 in the origina file
+testing_set <- read_csv('clean_testing_data.csv')
+#note - the cleaned testing set has 42,299 observations instead of the 48,744
+
+```
+##Observation on cleaning and TARGET value frequency.
+Group 8 is concerned about the effect of cleaning on the already imbalanced target classification. The group set a tolerance threshold of a 10% change in the TARGET variable. If the cleaning resulted in a disproportionate relative increase or decrease in the target variable frequency, the group would reevaluate cleaning methods.
+
+The cleaning methods used resulted in a 4.24% reduction in the TARGET variable, well below the group's threshold. 
+
+```{r Target variable testing}
+## Group note - you don't need to import the raw data back in. We'll just uncomment this in the final submissiont to demonstrate the change percentage in the TARGET variable
+
+#raw_data_train <- read_csv("application_train.csv")
+
+#(mean(raw_data_train$TARGET) - mean(training_set$TARGET))/mean(raw_data_train$TARGET)
+
+```
+
+
+```{r data formatting}
+#Some of the variables need to be treated as factors for the subsequebnt modeling steps
+
+#Let's filter the characters first
+testing_set %>% mutate(across(where(is.character), as.factor))
+training_set %>% mutate(across(where(is.character), as.factor))
+
+#we should factor the Target variable for classification approaches, too.
+training_set$TARGET <- as.factor(training_set$TARGET)
+
+#DAYS_EMPLOYED and DAYS_CREDIT are both negative values, since they are past date - current date. Let's make them absolute values to be easier to interpret. 
+
+#There appears to be one anomaly in the DAYS_EMPLOYED Values; a very large positive number. 
+training_set %>%
+   ggplot(aes(DAYS_EMPLOYED)) + geom_boxplot()
+
+testing_set %>%
+   ggplot(aes(DAYS_EMPLOYED)) + geom_boxplot()
+
+
+summary(testing_set$DAYS_EMPLOYED)
+summary(training_set$DAYS_EMPLOYED)
+
+#The anomoly occurs in both training and testing. It must be a mis entry as it's impossible to work 365,243 days in a human lifetime. We will remove it from both sets.
+training_set <- training_set %>%
+  filter(DAYS_EMPLOYED <= 0)
+
+summary(training_set$DAYS_EMPLOYED)
+
+testing_set <- testing_set %>%
+  filter(DAYS_EMPLOYED <= 0)
+
+summary(training_set$DAYS_EMPLOYED)
+
+#Now, let's make these values absolute for interpretation.
+training_set$DAYS_EMPLOYED <- abs(training_set$DAYS_EMPLOYED)
+testing_set$DAYS_EMPLOYED <- abs(testing_set$DAYS_EMPLOYED)
+training_set$DAYS_CREDIT <- abs(training_set$DAYS_CREDIT)
+testing_set$DAYS_CREDIT <- abs(testing_set$DAYS_CREDIT)
+
+```
+Changing character columns into factor variables to add as dummy variables into analysis
+
+```{r}
+# Select character columns that contain categorical data to turn into factor variables
+columns <- c("NAME_INCOME_TYPE", "NAME_EDUCATION_TYPE")
+
+# Loop over the columns selected and convert them to factors
+for (column in columns) {
+  training_set[[column]] <- factor(training_set[[column]])
+}
+```
+
+Create dummy variable for categorical variables
+```{r}
+# create dummy variables for categorical variables
+#dummies <- model.matrix(~ NAME_INCOME_TYPE + NAME_EDUCATION_TYPE + 0, data = training_set)
+
+# add the dummy variables to the original data frame
+#training_set_w_dummies <- cbind(training_set, dummies)
+
+# rename the dummy variable columns
+#colnames(training_set_w_dummies)[12:22] <- c("Bussinessman", "Commercial_Associate", "Maternity_Leave", "Pensioner", "State_Servant", "Student", "Working_Class", "Higher_Education", "Incomplete_Higher_Education", "Lower_Seconday_Education", "Seconday_Secondary_Special")
+
+# check the result
+#training_set_w_dummies[,c(6, 9, 12:22)]
+```
+
+Turn Yes/No columns into 1's and 0's to be used in modeling
+```{r}
+training_set_w_dummies$FLAG_OWN_CAR <- as.integer(training_set_w_dummies$FLAG_OWN_CAR == "Y")
+training_set_w_dummies$FLAG_OWN_REALTY <- as.integer(training_set_w_dummies$FLAG_OWN_REALTY == "Y")
+#training_set_w_dummies$TARGET <- as.integer(training_set_w_dummies$TARGET == "1")
+
+str(training_set_w_dummies)
+```
+
+
+## Partitions
+We will need to partition the training set into (at least) two partitions - one for training the data and one for testing. We need to test on a training partition before deploying the model to the formal testing set to measure accuracy (testing_set doesn't have the TARGET variable)
+
+This code will partition the training set into two: t_train and t_test. We will set the testing_set aside for now. use that at the end for final model predictions. 
+
+```{r partitions}
+set.seed(234)
+
+#creates a training subset of the training data with 70% of the data
+t_train_index <- createDataPartition(training_set_w_dummies$TARGET, p = 0.7, list=FALSE)
+
+t_train <- training_set_w_dummies[t_train_index,]
+t_test <- training_set_w_dummies[-t_train_index,]
+
+#check data
+summary(t_train)
+summary(t_test)
+
+#check for relative frequency of Target in t_train and t_test
+t_train %>%
+  group_by(TARGET) %>%
+  summarise(percent = n()/nrow(.))
+
+t_test %>%
+  group_by(TARGET) %>%
+  summarise(percent = n()/nrow(.))
+
+```
+
+
+Looks like we are set! 
+Note from Karson: I didn't sample to address classification bias or standardize the values with wide variance like income or loan amount. Tweaks like those may improve your model performance, but I wanted to give you both the options to try different approaches. Feel free to modify the data how you see fit. 
+<-------------------START CODING MODELS HERE--------------->
+
+
+
+
+
+```{r}
+head(t_train)
+head(t_test)
+dim(t_train)
+dim(t_test)
+```
+
+```{r}
+training_data_sub <- training_data %>%
+  select(
+    SK_ID_CURR,
+    TARGET,
+    NAME_CONTRACT_TYPE,
+    OCCUPATION_TYPE,
+    CODE_GENDER,
+    AMT_INCOME_TOTAL,
+    AMT_CREDIT,
+    AMT_ANNUITY,
+    AMT_GOODS_PRICE,
+    NAME_FAMILY_STATUS,
+    NAME_HOUSING_TYPE,
+    REGION_POPULATION_RELATIVE,
+    DAYS_ID_PUBLISH,
+    REGION_RATING_CLIENT,
+    REGION_RATING_CLIENT_W_CITY,
+    YEARS_BUILD_MODE,
+    AMT_REQ_CREDIT_BUREAU_YEAR,
+    DAYS_LAST_PHONE_CHANGE,
+    NONLIVINGAREA_MODE,
+    FLAG_WORK_PHONE,
+    FLAG_CONT_MOBILE,
+    DAYS_BIRTH,
+    NAME_INCOME_TYPE,
+    FLAG_OWN_CAR,
+    FLAG_OWN_REALTY,
+    NAME_EDUCATION_TYPE,
+    DAYS_EMPLOYED
+  )
+```
+
+Not a great model for this data
+```{r}
+tree_mod <- rpart(TARGET ~.,
+                  data = training_data_sub[-1])
+
+tree_mod
+```
+
+```{r}
+tree_preds <- predict(tree_mod, t_test, type = "class")
+
+tree_cf <- table(tree_preds, t_test$TARGET)
+confusionMatrix(tree_cf, positive = "1")
+```
+
+
+```{r}
+rf_mod_default <- randomForest(TARGET ~.,
+                               data = training_data_sub[,-c(1, 16, 19)])
+rf_mod_default
+```
+
+```{r}
+#Evaluate performance against the training dataset and then the test dataset
+rf_def_predict_train <- predict(rf_mod_default, t_train)
+mmetric(t_train$TARGET, rf_def_predict_train, metric = "ACC", "TPR", "PRECISION", "F1")
+```
+
+```{r}
+rf_def_predict_test <- predict(rf_mod_default, t_test)
+mmetric(t_test$TARGET, rf_def_predict_test, metric = "ACC", "TPR", "PRECISION", "F1")
+```
+
+Plot Error Rate v Number of Trees in random forest
+```{r}
+oob_error <- rf_mod_default$err.rate[,1]
+plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error)
+names(plot_dat) <- c("trees", "oob_error")
+
+g_1 <- ggplot(plot_dat, aes(x = trees, y = oob_error)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  theme_bw() +
+  geom_smooth() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Error Rate v Number of Trees", x = "Number of Trees", y = "Error Rate")
+
+g_1
+```
+
+Split data into training and test sets with an equal proportion of the target variable in each set
+```{r}
+split_data <- stratified(training_set_w_dummies,
+                         group = "TARGET",
+                         size = 0.25,
+                         bothSets = TRUE)
+
+test_data <- split_data[[1]]
+
+train_data <- split_data[[2]]
+
+dim(test_data)
+dim(train_data)
+
+View(test_data)
+
+table(test_data$TARGET)
+table(train_data$TARGET)
+```
+
+```{r}
+rf_mod2 <- randomForest(TARGET ~.,
+                        data = train_data[,-c(1, 6, 9)],
+                        ntree = 100)
+rf_mod2
+```
+
+```{r}
+#Evaluate performance against the training dataset and then the test dataset
+rf_mod2_predict_train <- predict(rf_mod2, train_data)
+mmetric(train_data$TARGET, rf_mod2_predict_train, metric = "ACC", "TPR", "PRECISION", "F1")
+```
+
+```{r}
+rf_mod2_predict_test <- predict(rf_mod2, test_data)
+mmetric(test_data$TARGET, rf_mod2_predict_test, metric = "ACC", "TPR", "PRECISION", "F1")
+```
+
+Plot Error Rate v Number of Trees in random forest
+```{r}
+oob_error <- rf_mod2$err.rate[,1]
+plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error)
+names(plot_dat) <- c("trees", "oob_error")
+
+g_1 <- ggplot(plot_dat, aes(x = trees, y = oob_error)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  theme_bw() +
+  geom_smooth() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Error Rate v Number of Trees", x = "Number of Trees", y = "Error Rate")
+
+g_1
+```
+
+```{r}
+# Calculate the frequencies of each class
+class_freq <- table(t_train$TARGET)
+
+# Determine the sample size for each class
+sample_size <- round(min(class_freq) * 0.5)
+
+# Create a balanced subset by sampling from each class
+balanced_subset <- rbind(
+  subset(t_train, TARGET == 0, sample_n(n = sample_size)),
+  subset(t_train, TARGET == 1, sample_n(n = sample_size))
+)
+
+# Train the random forest model on the balanced subset
+rf_mod_default <- randomForest(TARGET ~ ., data = balanced_subset)
+
+
+```
+
+
+Hyperparameter tuning for upsampling and downsample (can set it to pull 50/50 from each target class)
+```{r}
+bag_mod <- randomForest(TARGET ~.,
+                        data = train_data[-c(1, 6, 9)],
+                        mtry = 6,
+                        ntree = 100,
+                        weights = )
+bag_mod
+```
+
+
+```{r}
+bag_preds <- predict(bag_mod, test_data)
+
+bag_cf <- table(bag_preds,test_data$TARGET)
+confusionMatrix(bag_cf, positive = "1")
+```
+
+```{r}
+oob_error <- bag_mod$err.rate[,1]
+plot_dat2 <- cbind.data.frame(rep(1:length(oob_error)), oob_error)
+names(plot_dat2) <- c("trees", "oob_error")
+
+g_2 <- ggplot(plot_dat2, aes(x = trees, y = oob_error)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  theme_bw() +
+  geom_smooth() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Error Rate v Number of Trees", x = "Number of Trees", y = "Error Rate")
+
+g_2
+```
+
+
+
+

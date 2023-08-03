@@ -1,0 +1,220 @@
+---
+title: "Home-Credit EDA Workbook"
+output: html_notebook
+---
+
+```{r, ECHO=FALSE, results=FALSE}
+#import packages here
+library(tidyverse)
+library(ggplot2)
+library(readr)
+```
+
+
+```{r data setup}
+#this block imports all datasets except the test set for EDA purposes.
+#NOTE - you must have the csv files saved within your local github folder. Git will not sync them.
+
+#this is the primary dataset, it contains the target variable
+training_data <- read_csv("application_train.csv")
+training_data <- application_train
+
+#dataset with all clients' previous credits.
+bureau <- read.csv('bureau.csv')
+
+#dataset with monthly balances of previous credits from Credit Bureau
+#NOTE - joins on credit institution
+#bureau_balance <- read.csv('bureau_balance.csv') 
+
+#monthly balance of client's previous loans, behavioral data
+cash_balance <- read.csv('POS_CASH_balance.csv')
+
+#application information from previous loans
+previous_applicants <- read.csv('previous_application.csv')
+
+#installment payment info for previous loan holders
+#installment_payments <- read.csv('installments_payments.csv')
+
+#data set with clients' credit card balances
+#credit_card_balance <- read.csv('credit_card_balance.csv')
+
+
+```
+
+
+# Thoughts/Questions
+Impute for columns with only a handful of NA values?
+For categorical variables, what is the best way to handle NA values? The NA values get left out of the graphs that are being created for the categorical variables so would it be worth it to add them into the graphs labeled under "NA"?
+
+
+After looking at the summary data, we noticed that the character columns are not represented very well through the summary function. To combat this problem, we decided to factorize the variables that contained categorical data in order to better understand the data structure that each column holds. This will allow for the summary function to properly handle the type of data in the columns below to show the number contained in each category.
+
+```{r}
+# Select character columns that contain categorical data to turn into factor variables
+columns <- c("NAME_CONTRACT_TYPE", "CODE_GENDER", "FLAG_OWN_CAR", "FLAG_OWN_REALTY", "NAME_INCOME_TYPE", "NAME_EDUCATION_TYPE", "NAME_FAMILY_STATUS", "NAME_HOUSING_TYPE", "WEEKDAY_APPR_PROCESS_START", "ORGANIZATION_TYPE", "NAME_TYPE_SUITE", "OCCUPATION_TYPE" )
+
+# Loop over the columns selected and convert them to factors
+for (column in columns) {
+  training_data[[column]] <- factor(training_data[[column]])
+  print(paste("Summary of", column))
+  print(summary(training_data[[column]]))
+}
+
+str(training_data)
+```
+
+```{r}
+# run another summary on the dataset after converting character fields that represeted categorical data to factors to gain more knowledge on the values that are represented in those columns
+summary(training_data)
+```
+
+After examining the categorical variables contained in the dataset more closely, we think that the contract type, income type, and housing type could potentially show interesting relationships with the variables we have initially identified as particularly important when it comes to a creditor's ability to make timely payments. To illustrate these relationships, we have created density plots to show how contract type may be related to total income as well as annuity amount. We decided to limit the x-axis o the visualizations as we found that outliers made the graphs very difficult to read and gain any real insights from. The visualization below shows that cash loans typically occur at a higher volume than revolving loans across the range we set for income total except for when total income is less than or equal to 10,000.
+
+```{r}
+options(scipen = 999)
+
+plot2 <- training_data %>%
+   filter(AMT_INCOME_TOTAL < 117000000) %>% 
+  ggplot(aes(x = AMT_INCOME_TOTAL, fill = NAME_CONTRACT_TYPE)) +
+  geom_density(alpha = 0.5) +
+    theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Density Plot of Income Amount by Contract Type", x = "Income Total Amount", fill = "Contract Type")
+
+plot2 <- plot2 + xlim(0, 250000)
+
+plot2
+```
+
+We wanted to explore if the observation we made in the previous visualization held true for annuity amount as well so we created the following density plot. This visualization shows that the largest density of annuity amount for revolving loans exists below approximately $10,000 while cash loans typically represent the larger amounts of annuity. We plan to analyze these variables in more depth to better understand what factors may be contributing to this relationship.
+
+```{r}
+# Set the axis labels and limits
+plot <- ggplot(training_data, aes(x = AMT_ANNUITY, fill = NAME_CONTRACT_TYPE)) +
+  geom_density(alpha = 0.5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Density Plot of Annuity Amount by Contract Type", x = "Annuity Amount", fill = "Contract Type")
+
+plot <- plot + xlim(0, 100000)
+
+# Display the plot
+plot
+```
+
+The following boxplot depicts the relationship between credit amount and housing type. In this it is clear that there is a wider range of credit given for houses/apartments with one office apartment being on the upper end of the range as well. This visualization also sets the average line for credit amount (shown in black) which allows us to easily see how the different housing types distributions' compare to the mean of credit across the entire training set. We found it particularly interesting that customers who live with parents can access a credit amount that can be larger than customers who live in a co-op apartment, municipal apartment, and office apartment. We also recognize that in this the average value of credit given to customers who live with their parents looks to be lower than many of the other housing types even though they have maximum values at the upper end of the scale.
+```{r}
+amt_credit_bp <- ggplot(training_data,
+       aes(x = NAME_HOUSING_TYPE, y = AMT_CREDIT, color = NAME_HOUSING_TYPE)) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Boxplot of Credit Amount by Housing Type", x = "Housing Type", y = "Credit Amount") +
+  guides(color = FALSE)
+
+amt_credit_bp_w_line <- amt_credit_bp +
+  geom_hline(aes(yintercept = mean(AMT_CREDIT)), color = "black")
+
+amt_credit_bp_w_line
+```
+
+Another variable we thought could show an interesting relationship with the Target variable is income type as it can represent socioeconomic status to a degree as well as current job status. At a first glance, this visualization shows a wide range of annuity's given to bussiness men with the maximum values being given to commerical associates. We plan to further analysis the relationship between income type and the target variable specifically, but we believe that annuity amount will be an important predictor in the dataset so we wanted to illustrate its relationship to income type in our initial analysis.
+```{r}
+amt_annuity_bp <- ggplot(training_data,
+       aes(x = NAME_INCOME_TYPE, y = AMT_ANNUITY, color = NAME_INCOME_TYPE)) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Boxplot of Annuity Amount by Income Type", x = "Income Type", y = "Annuity Amount") +
+  guides(color = FALSE)
+
+amt_annuity_bp
+```
+
+```{r}
+ggplot(training_data,
+       aes(x = NAME_HOUSING_TYPE, y = AMT_CREDIT, color = as.factor(TARGET))) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Does Credit Amount Differ significantly between Defaulters and Non-Defaulters?", x = "Housing Type", y = "Credit Amount", color = "Default?") +
+  scale_color_discrete(labels = c("No Default", "Default"))
+
+ggplot(training_data,
+       aes(x = NAME_HOUSING_TYPE, y = AMT_ANNUITY, color = as.factor(TARGET))) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Does Annuity Amount Differ significantly between Defaulters and Non-Defaulters?", x = "Housing Type", y = "Credit Amount", color = "Default?") +
+  scale_color_discrete(labels = c("No Default", "Default"))
+```
+
+```{r}
+ggplot(training_data,
+       aes(x = NAME_INCOME_TYPE, y = AMT_CREDIT, color = as.factor(TARGET))) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Does Credit Amount Differ significantly between Defaulters and Non-Defaulters?", x = "Income Type", y = "Credit Amount", color = "Default?") +
+  scale_color_discrete(labels = c("No Default", "Default"))
+library(ggdark)
+ggplot(training_data,
+       aes(x = NAME_INCOME_TYPE, y = AMT_ANNUITY, color = as.factor(TARGET))) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Does Annuity Amount Differ significantly between Defaulters and Non-Defaulters?", x = "Income Type", y = "Credit Amount", color = "Default?") +
+  scale_color_discrete(labels = c("No Default", "Default")) + 
+  dark_theme_bw()
+```
+
+
+```{r}
+no_outlier <- training_data %>%
+  filter(AMT_INCOME_TOTAL < 117000000)
+  
+ggplot(no_outlier,
+       aes(x = NAME_HOUSING_TYPE, y = AMT_INCOME_TOTAL, color = as.factor(TARGET))) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Boxplot of Credit Amount by Housing Type", x = "Housing Type", y = "Credit Amount", color = "Default?")
+
+summary(training_data$AMT_INCOME_TOTAL)
+```
+
+
+```{r}
+summary(training_data$REGION_POPULATION_RELATIVE)
+```
+
+```{r}
+training_data$TARGET <- factor(training_data$TARGET)
+
+model <- glm(TARGET ~ ., data = training_data[,-c(1, 22:23, 42:50, 73:91, 97:116)], family = binomial)
+
+# Print the model summary
+summary(model)
+str(training_data)
+```
+
+
+

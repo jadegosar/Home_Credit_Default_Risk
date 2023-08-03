@@ -1,0 +1,315 @@
+---
+title: "Presentation visualizations"
+output: html_document
+date: "2023-07-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+# Load required library
+library(caret)
+library(randomForest)
+library(dplyr)
+
+options(scipen = 999)
+```
+```{r}
+set.seed(3496)
+
+rf_mod_final <- randomForest(TARGET ~.,
+                       data = training_sample[, -c(28)],
+                       mtry = 9,
+                       ntree = 50,
+                       nodesize = 200)
+
+rf_mod_final
+```
+
+Create predictions for final model on the test data that we have held out for validation.
+```{r}
+rf_test_preds_final <- predict(rf_mod_final, t_test)
+
+cf_3 <- table(rf_test_preds_final, t_test$TARGET)
+confusionMatrix(cf_3, positive = "1")
+
+# Create a copy of the test data and add the predictions as a new column
+test_data_copy <- t_test
+test_data_copy$Predicted_Target <- rf_test_preds_final
+```
+
+```{r}
+# Create a logistic regression model
+model <- glm(TARGET ~ ., data = t_train, family = binomial)
+
+test_data_copy2 <- test_data_copy[,-c(28)]
+
+# Set predictions to always predict the majority class (0)
+test_data_copy2$Predicted <- 0
+
+# Make predictions on the test data using the trained model
+test_data_copy2$Predicted <- predict(model, newdata = test_data_copy2, type = "response")
+
+# Convert predicted probabilities to binary class (0 or 1)
+test_data_copy2$Predicted <- as.integer(test_data_copy2$Predicted >= 0.5)
+
+# Evaluate the model on the test data (calculate accuracy and AUC)
+accuracy <- mean(test_data_copy2$Predicted == test_data_copy2$TARGET)
+
+# Using pROC package to calculate AUC
+library(pROC)
+roc_obj <- roc(test_data_copy2$TARGET, test_data_copy2$Predicted)
+auc <- auc(roc_obj)
+
+# Print the evaluation metrics
+print(paste("Accuracy:", accuracy))
+print(paste("AUC:", auc))
+```
+
+```{r}
+var_importance2 <- rf_mod_final$importance
+
+# Create the variable importance plot
+varImpPlot(var_importance, main = "Variable Importance Plot")
+```
+
+
+```{r}
+var_importance <- rf_mod_final$importance
+varImpPlot(rf_mod_final, main = "Variable Importance Plot")
+```
+
+```{r}
+# Order variable importance in descending order
+var_importance <- var_importance[order(var_importance, decreasing = TRUE), ]
+
+# Plot the top N important variables (e.g., top 10 variables)
+top_n <- 10
+varImpPlot(rf_mod_final, n.var = top_n, main = "Variable Importance Plot")
+ggsave(filename = "variable_importance.png", plot = top_10, width = 5, height = 6)
+```
+
+
+```{r}
+# Calculate final model ROC
+roc2 = roc(t_test$TARGET, as.numeric(rf_test_preds_final))
+print(roc2)
+
+# Calculate null model ROC
+roc_null = roc(test_data_copy2$TARGET, test_data_copy2$Predicted)
+print(roc_null)
+
+# Print null model AUC on test set
+plot.roc(roc_null, print.auc = TRUE, col = "red", print.auc.col = "red")
+
+# Print final model AUC on test set
+plot.roc(roc2, print.auc = TRUE, print.auc.x = 0, print.auc.y = 0.6, col = "blue", print.auc.col = "blue")
+```
+
+```{r}
+# Create the first plot for null model AUC
+plot.roc(roc_null, col = "red", print.auc = TRUE, print.auc.x = 0.4, print.auc.y = 0.6, print.auc.col = "red")
+
+# Add the second plot for final model AUC
+plot.roc(roc2, col = "blue", print.auc = TRUE, print.auc.x = .9, print.auc.y = 0.6, print.auc.col = "blue", add = TRUE)
+
+# Add legend to differentiate between the two plots
+legend("bottomright", legend = c("Null Model", "Final Model"), col = c("red", "blue"), lwd = 2)
+
+```
+
+
+```{r}
+# test data copy #2 contains the null class predictions (0 - always predicting the customer will not default)
+# if using model that would just predict majority class, would lose all money for 1290 customers (all actual defaulters)
+test_data_copy2 %>%
+  filter(TARGET == 1)
+
+#test data copy contains models predictions
+# our model would capture 392 of 1290 defaulters - 30.4% of defaulters currently in the dataset, only losing money for 898 defaulters versus 1290
+test_data_copy %>%
+  filter(TARGET == 1 & Predicted_Target == 1)
+
+
+colnames(test_data_copy2)
+```
+
+
+```{r}
+
+# Filter the original test data to get only the rows where the actual target is 1
+actual_target_1 <- subset(t_test, TARGET == 1)
+
+# Filter the test data copy to get only the rows where the predicted target is 1
+predicted_target_1 <- subset(test_data_copy, Predicted_Target == 1)
+
+# Summary statistics
+summary(actual_target_1$AMT_INCOME_TOTAL)
+summary(predicted_target_1$AMT_INCOME_TOTAL)
+
+summary(actual_target_1$NAME_EDUCATION_TYPE)
+summary(predicted_target_1$NAME_EDUCATION_TYPE)
+
+head(actual_target_1)
+head(predicted_target_1)
+
+table(actual_target_1$NAME_INCOME_TYPE)
+table(predicted_target_1$NAME_INCOME_TYPE)
+
+table(actual_target_1$OCCUPATION_TYPE)
+table(predicted_target_1$OCCUPATION_TYPE)
+
+summary(actual_target_1$DAYS_EMPLOYED)
+summary(predicted_target_1$DAYS_EMPLOYED)
+
+summary(actual_target_1$DAYS_CREDIT)
+summary(predicted_target_1$DAYS_CREDIT)
+```
+
+```{r}
+ggplot(actual_target_1, aes(x = AMT_INCOME_TOTAL, fill = NAME_EDUCATION_TYPE)) +
+  geom_density(alpha = 0.3) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Density Plot of Income Amount by Education Type for actual Target = 1", x = "Total Income Amount", fill = "Education Type") + 
+  xlim(0, 1000000)
+
+ggplot(predicted_target_1, aes(x = AMT_INCOME_TOTAL, fill = NAME_EDUCATION_TYPE)) +
+  geom_density(alpha = 0.3) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Density Plot of Income Amount by Education Type for our model's Target = 1", x = "Total Income Amount", fill = "Education Type") + 
+  xlim(0, 1000000)
+```
+
+```{r}
+amt_credit_bp_actual <- ggplot(actual_target_1,
+       aes(x = NAME_HOUSING_TYPE, y = AMT_CREDIT, color = NAME_HOUSING_TYPE)) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Boxplot of Credit Amount by Housing Type", x = "Housing Type", y = "Credit Amount") +
+  guides(color = FALSE)
+
+amt_credit_bp_actual_w_line <- amt_credit_bp_actual +
+  geom_hline(aes(yintercept = mean(AMT_CREDIT)), color = "black")
+
+amt_credit_bp_pred <- ggplot(predicted_target_1,
+       aes(x = NAME_HOUSING_TYPE, y = AMT_CREDIT, color = NAME_HOUSING_TYPE)) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(size = 5)) +
+  labs(title = "Boxplot of Credit Amount by Housing Type", x = "Housing Type", y = "Credit Amount") +
+  guides(color = FALSE)
+
+amt_credit_bp_pred_w_line <- amt_credit_bp_pred +
+  geom_hline(aes(yintercept = mean(AMT_CREDIT)), color = "black")
+
+amt_credit_bp_actual_w_line
+amt_credit_bp_pred_w_line
+```
+
+```{r}
+
+# Load necessary libraries
+library(ggplot2)
+library(gridExtra)
+
+# Calculate the common y-axis limits for both graphs
+common_y_limits <- range(c(actual_target_1$AMT_CREDIT, predicted_target_1$AMT_CREDIT))
+#[1] "Co-op apartment"     "House / apartment"   "Municipal apartment" "Office apartment"    "Rented apartment"   
+#[6] "With parents"
+color_vector <- c("Co-op apartment" = "magenta", "Office apartment" = "blue1")
+
+# Create boxplots for actual and predicted data
+actual_boxplot <- ggplot(actual_target_1,
+                         aes(x = NAME_HOUSING_TYPE, y = AMT_CREDIT, color = NAME_HOUSING_TYPE)) +
+  geom_boxplot(fill = "white") +
+  scale_color_manual(values = color_vector) +  # Manually assign colors to specified categories
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        plot.title = element_text(size = 12)) +
+  labs(title = "Credit Amount by Housing Type (Actual)",
+       x = "Housing Type", y = "Credit Amount") +
+  guides(color = FALSE) +
+  geom_hline(aes(yintercept = mean(AMT_CREDIT)), color = "black") +
+  ylim(common_y_limits)  # Set the same y-axis limits for both graphs
+
+predicted_boxplot <- ggplot(predicted_target_1,
+                            aes(x = NAME_HOUSING_TYPE, y = AMT_CREDIT, color = NAME_HOUSING_TYPE)) +
+  geom_boxplot(fill = "white") +
+  scale_color_manual(values = color_vector) +  # Manually assign colors to specified categories
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        plot.title = element_text(size = 12)) +
+  labs(title = "Credit Amount by Housing Type (Predicted)",
+       x = "Housing Type", y = "Credit Amount") +
+  guides(color = FALSE) +
+  geom_hline(aes(yintercept = mean(AMT_CREDIT)), color = "black") +
+  ylim(common_y_limits)  # Set the same y-axis limits for both graphs
+
+# Combine the boxplots side by side
+grid.arrange(actual_boxplot, predicted_boxplot, ncol = 2)
+
+predicted_target_1[,c("TARGET", "Predicted_Target", "AMT_CREDIT", "NAME_HOUSING_TYPE")]
+levels(predicted_target_1$NAME_HOUSING_TYPE)
+```
+
+```{r}
+amt_annuity_bp <- ggplot(predicted_target_1,
+       aes(x = OCCUPATION_TYPE, y = AMT_ANNUITY, color = OCCUPATION_TYPE)) +
+  geom_boxplot(fill = "white") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(title = "Boxplot of Annuity Amount by Occupation Type", x = "Occupation Type", y = "Annuity Amount") +
+  guides(color = FALSE)
+
+amt_annuity_bp
+```
+
+
