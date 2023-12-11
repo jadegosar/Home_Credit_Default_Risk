@@ -21,7 +21,7 @@ the actual defaulters to see if our model impacted the current customer base for
 estimated greater ROI of random forest model over majority classifier performance in the normalized currency value that the dataset is in. This solution assumes
 simple interest rate of 18.912% (based on prior median rate) and the principal is fully recoverable.
 
-The main two difficulties that our group encountered was manipulating many variables that we thought could be important but were missing large amounts of data ad
+The main two difficulties that our group encountered was manipulating many variables that we thought could be important but were missing large amounts of data and
 dealing with an imbalanced dataset where less than 10% of the target variable was in the group that we were trying to predict (defaulters). This led us to upsample
 the dataset, meaning we could balance out the dataset we were training the models on to a 50/50 split of the target variable. However this does not actually
 increase the information that our model is using to predict the target class but rather just takes random samples from the target class of interest to balance the
