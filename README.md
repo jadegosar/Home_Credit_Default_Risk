@@ -9,7 +9,7 @@ risk of default and what factors are contributing to the risk assessmet. This le
 likely to default are given loans, which immensely costs the business, and customer's who are reliable borrowers are denied the opportunity to obtain a loan and
 potential clients are lost.  
 
-### Project Process
+### Project Overview
 The project objective is to create a supervised analytical model to help Home Credit predict how capable each applicant is of repaying a possible loan, giving them
 the ability to intervene before borrowers default and reach an underserved population. Our group's solution to this business problem was to create a various
 predictive models to show important factors of default that Home Credit has data available for as well as improve the firm's ability to capture reliable borrowers
